@@ -3,15 +3,19 @@
 An asynchronous vendor onboarding platform: registration, duplicate detection, compliance
 verification (RAG + LLM), SLA-risk prediction (CatBoost + SHAP), human review and notifications.
 
-**Current phase: 1 – Backend foundation** (Days 1–2 of the plan)
+**Current phase: 2 – Authentication and RBAC** (Days 3–4 of the plan)
 
 ## Quick start
 
 ```bash
 cp backend/.env.example backend/.env
 make up                      # Postgres (pgvector), Redis, API; runs migrations on start
+make create-admin email=admin@example.com   # or: docker compose exec api python -m app.scripts.create_admin --email admin@example.com
 open http://localhost:8000/docs
 ```
+
+In Swagger, click **Authorize** and log in with the account **email** in the `username` field.
+The token is remembered across page reloads.
 
 Local development without Docker for the API:
 
@@ -25,16 +29,31 @@ uvicorn app.main:app --reload
 pytest -q
 ```
 
+## Roles
+
+| Role | Created by | Can do |
+|---|---|---|
+| VENDOR | Self-registration (`/auth/register`) | Create one application, view it, move it to DOCUMENTS_SUBMITTED |
+| OPERATIONS | Admin | View all applications, make review decisions |
+| ADMIN | `create_admin` script or another admin | Everything operations can, plus manage users |
+
 ## API (v1)
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/v1/vendors` | Register a vendor (201, 409 duplicate, 422 invalid) |
-| GET | `/api/v1/vendors` | List with `status`, `region`, `limit`, `offset` |
-| GET | `/api/v1/vendors/{id}` | Vendor details and current status |
-| POST | `/api/v1/vendors/{id}/status` | State transition (409 if not allowed) |
-| GET | `/api/v1/vendors/{id}/audit-logs` | Decision trail |
-| GET | `/health`, `/health/ready` | Liveness / readiness (checks DB) |
+| Method | Path | Who | Description |
+|---|---|---|---|
+| POST | `/api/v1/auth/register` | public | Create a vendor account |
+| POST | `/api/v1/auth/login` | public | OAuth2 password flow, returns a JWT |
+| GET | `/api/v1/auth/me` | any | Current user |
+| POST | `/api/v1/users` | admin | Create a user of any role |
+| GET | `/api/v1/users` | admin | List users, filter by `role` |
+| PATCH | `/api/v1/users/{id}` | admin | Change name, role or active flag |
+| POST | `/api/v1/vendors` | vendor | Submit an application (one per account) |
+| GET | `/api/v1/vendors` | any | Staff: all; vendors: only their own |
+| GET | `/api/v1/vendors/me` | vendor | The caller's own application |
+| GET | `/api/v1/vendors/{id}` | owner or staff | Application details |
+| POST | `/api/v1/vendors/{id}/status` | owner or staff | State transition (role-restricted) |
+| GET | `/api/v1/vendors/{id}/audit-logs` | staff | Decision trail |
+| GET | `/health`, `/health/ready` | public | Liveness / readiness (checks DB) |
 
 All errors share one envelope:
 `{"error": {"code", "message", "details", "request_id"}}`
@@ -63,23 +82,26 @@ Defined in one place (`app/services/state_machine.py`). APPROVED and REJECTED ar
   there is never a change without a record, or a record without a change.
 - **Correlation IDs.** Every request gets an `X-Request-ID` (or reuses the caller's), which
   appears in JSON logs, error responses and audit rows.
+- **Authorization order: 401 → 404 → 403 → 409.** Unauthenticated requests fail first. A vendor
+  asking for someone else's application gets 404, not 403, so application IDs are not revealed.
+  Then the role is checked, and only then the state machine. Rules live in `app/services/permissions.py`.
+- **The database is the source of truth for roles.** The user is reloaded on every request, so
+  deactivating an account or changing a role takes effect immediately, and a token that claims a
+  different role changes nothing (`test_role_in_token_is_not_trusted`).
+- **Hardened login.** Argon2id password hashing; one generic message for unknown email, wrong
+  password and inactive account; a dummy hash check when the email doesn't exist so response
+  time doesn't reveal which emails are registered; JWT algorithm pinned on decode.
+- **No privilege escalation at signup.** Registration schemas forbid unknown fields, so
+  `{"role": "ADMIN"}` in a signup is rejected rather than ignored. Admins cannot deactivate or
+  demote themselves.
+- **Safe secrets.** The app refuses to start outside local/test with the default `SECRET_KEY`.
 - **Versioned schema.** Alembic migrations with deterministic constraint names; CI runs
   `alembic check` to fail the build if models and migrations drift.
-
-## Verifying concurrency yourself
-
-With the stack running, fire 20 identical registrations at once and confirm exactly one row:
-
-```bash
-P='{"legal_name":"Race Co","email":"race@co.in","gstin":"29AABCU9603R1ZM","region":"south","service_type":"consumables"}'
-for i in $(seq 20); do curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8000/api/v1/vendors \
-  -H 'content-type: application/json' -d "$P" & done | sort | uniq -c
-```
 
 ## Roadmap
 
 - [x] Days 1–2: FastAPI structure, schema + migrations, REST APIs, validation, state machine, audit log
-- [ ] Days 3–4: JWT auth, users table, RBAC (vendor / operations / admin), ownership checks
+- [x] Days 3–4: JWT auth, users table, RBAC (vendor / operations / admin), ownership checks
 - [ ] Days 5–6: Document upload, Celery + Redis workers, jobs table and job status API
 - [ ] Days 7–8: Retries with backoff, dead-letter queue, idempotency keys
 - [ ] Days 9–10: RAG compliance (pgvector + Gemini), CatBoost SLA risk + SHAP, human review queue

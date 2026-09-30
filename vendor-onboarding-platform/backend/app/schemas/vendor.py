@@ -53,6 +53,7 @@ class VendorRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    owner_id: uuid.UUID | None
     legal_name: str
     email: str
     gstin: str

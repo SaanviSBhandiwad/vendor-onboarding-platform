@@ -1,7 +1,18 @@
 import enum
+import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, Index, String, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -26,12 +37,18 @@ class Vendor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         # so concurrent registrations cannot create duplicates.
         UniqueConstraint("email", name="uq_vendors_email"),
         UniqueConstraint("gstin", name="uq_vendors_gstin"),
+        # One vendor profile per vendor user account.
+        UniqueConstraint("owner_id", name="uq_vendors_owner_id"),
         CheckConstraint(f"status IN ({_STATUS_VALUES})", name="valid_status"),
         Index("ix_vendors_status", "status"),
         Index("ix_vendors_region", "region"),
         Index("ix_vendors_created_at", "created_at"),
     )
 
+    # Nullable: vendors created before accounts existed (or by staff) have no owner.
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
     legal_name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     gstin: Mapped[str] = mapped_column(String(15), nullable=False)

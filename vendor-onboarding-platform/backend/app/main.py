@@ -17,7 +17,11 @@ def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level)
 
-    app = FastAPI(title=settings.app_name, version="0.1.0")
+    app = FastAPI(
+        title=settings.app_name,
+        version="0.2.0",
+        swagger_ui_parameters={"persistAuthorization": True},
+    )
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
