@@ -54,3 +54,21 @@ def test_create_admin_script(db_session, monkeypatch, capsys):
     assert "Admin created: boss@company.in" in capsys.readouterr().out
     assert create_admin.main(args) == 1  # duplicate
     assert create_admin.main(["--email", "x@company.in", "--password", "weak"]) == 1
+
+
+def test_admin_resets_password(client, admin_user, ops_user, db_session):
+    r = client.patch(f"/api/v1/users/{ops_user.id}", json={"password": "N3wSecret99"}, headers=auth(admin_user))
+    assert r.status_code == 200
+    login = lambda pw: client.post("/api/v1/auth/login", data={"username": ops_user.email, "password": pw})  # noqa: E731
+    assert login("N3wSecret99").status_code == 200
+    assert login("Passw0rd123").status_code == 401
+
+    from app.services import audit_service
+    entry = audit_service.list_for_entity(db_session, "user", ops_user.id)[-1]
+    assert entry.details["password_reset"] is True
+    assert "N3wSecret99" not in str(entry.details)
+
+
+def test_password_reset_enforces_strength(client, admin_user, ops_user):
+    r = client.patch(f"/api/v1/users/{ops_user.id}", json={"password": "weak"}, headers=auth(admin_user))
+    assert r.status_code == 422

@@ -98,7 +98,7 @@ def test_vendor_sees_only_own_application(client, vendor_payload, other_vendor_p
     # 404, not 403: a vendor cannot even learn that another application exists.
     r = client.get(f"/api/v1/vendors/{theirs}", headers=auth(vendor_user))
     assert r.status_code == 404
-    assert move(client, theirs, "DOCUMENTS_SUBMITTED", vendor_user).status_code == 404
+    assert move(client, theirs, "REJECTED", vendor_user).status_code == 404
 
     assert client.get("/api/v1/vendors", headers=auth(ops_user)).json()["total"] == 2
 
@@ -120,25 +120,25 @@ def test_staff_filters(client, vendor_payload, other_vendor_payload, vendor_user
 
 # ---------- status changes ----------
 
-def test_vendor_can_only_submit_documents(client, vendor_payload, vendor_user):
+def test_vendors_cannot_change_status_directly(client, vendor_payload, vendor_user):
+    """Uploading documents moves the application; vendors never set status by hand."""
     vid = create(client, vendor_payload, vendor_user).json()["id"]
-    r = move(client, vid, "APPROVED", vendor_user)
-    assert r.status_code == 403  # role check happens before the state machine
-    assert r.json()["error"]["details"]["allowed_targets"] == ["DOCUMENTS_SUBMITTED"]
-    assert move(client, vid, "DOCUMENTS_SUBMITTED", vendor_user).status_code == 200
+    for target in ("APPROVED", "DOCUMENTS_SUBMITTED"):
+        r = move(client, vid, target, vendor_user)
+        assert r.status_code == 403  # role check happens before the state machine
+        assert r.json()["error"]["details"]["allowed_targets"] == []
 
 
 def test_full_review_flow_with_audit_actors(client, vendor_payload, vendor_user, ops_user, admin_user):
     vid = create(client, vendor_payload, vendor_user).json()["id"]
-    assert move(client, vid, "DOCUMENTS_SUBMITTED", vendor_user).status_code == 200
-    for target in ["UNDER_REVIEW", "MANUAL_REVIEW", "APPROVED"]:
+    for target in ["DOCUMENTS_SUBMITTED", "UNDER_REVIEW", "MANUAL_REVIEW", "APPROVED"]:
         r = move(client, vid, target, ops_user)
         assert r.status_code == 200 and r.json()["status"] == target
 
     logs = client.get(f"/api/v1/vendors/{vid}/audit-logs", headers=auth(admin_user)).json()
     assert [log["action"] for log in logs] == ["vendor_created"] + ["status_changed"] * 4
-    assert logs[0]["actor"] == logs[1]["actor"] == f"user:{vendor_user.id}"
-    assert all(log["actor"] == f"user:{ops_user.id}" for log in logs[2:])
+    assert logs[0]["actor"] == f"user:{vendor_user.id}"
+    assert all(log["actor"] == f"user:{ops_user.id}" for log in logs[1:])
     assert logs[-1]["details"] == {"from": "MANUAL_REVIEW", "to": "APPROVED", "reason": "test", "role": "OPERATIONS"}
     assert all(log["request_id"] for log in logs)
 

@@ -59,7 +59,9 @@ def test_login_failures_share_one_message(client, vendor_user, make_user):
     for r in responses:
         assert r.status_code == 401
         assert r.headers["WWW-Authenticate"] == "Bearer"
-        assert r.json()["error"]["message"] == "Incorrect email or password"
+        # RFC 6749 token-endpoint error shape, which Swagger's Authorize box can display
+        assert r.json()["error"] == "invalid_grant"
+        assert r.json()["error_description"] == "Incorrect email or password"
 
 
 def test_me_requires_token(client):

@@ -10,6 +10,9 @@ from app.core.database import get_db
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models import Base, User, UserRole
+from app.services import document_processing
+from app.services.queue import get_job_queue
+from app.services.storage import LocalStorage, get_storage
 
 PASSWORD = "Passw0rd123"
 _PASSWORD_HASH = hash_password(PASSWORD)  # hash once; Argon2 is deliberately slow
@@ -36,11 +39,41 @@ def db_session():
 
 
 @pytest.fixture
-def client(db_session):
+def storage(tmp_path):
+    return LocalStorage(tmp_path / "uploads")
+
+
+class RecordingQueue:
+    """Stands in for Redis/Celery: records job ids instead of sending them anywhere."""
+
+    def __init__(self):
+        self.enqueued = []
+
+    def __call__(self, job_id):
+        self.enqueued.append(job_id)
+
+
+@pytest.fixture
+def queue():
+    return RecordingQueue()
+
+
+@pytest.fixture
+def client(db_session, storage, queue):
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_storage] = lambda: storage
+    app.dependency_overrides[get_job_queue] = lambda: queue
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def inline_worker(db_session, storage):
+    """Runs the job immediately, as a worker would, so tests can check the finished result."""
+    app.dependency_overrides[get_job_queue] = lambda: (
+        lambda job_id: document_processing.run_job(db_session, storage, job_id)
+    )
 
 
 @pytest.fixture

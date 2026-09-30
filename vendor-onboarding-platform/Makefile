@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint migrate revision create-admin
+.PHONY: up down logs worker-logs test lint migrate revision create-admin
 
 up:        ## Start Postgres, Redis and the API
 	docker compose up --build -d
@@ -6,6 +6,8 @@ down:
 	docker compose down
 logs:
 	docker compose logs -f api
+worker-logs:
+	docker compose logs -f worker
 test:
 	cd backend && pytest -q
 lint:

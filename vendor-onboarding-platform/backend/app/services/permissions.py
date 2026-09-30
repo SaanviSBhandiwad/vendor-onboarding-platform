@@ -12,9 +12,10 @@ from app.models import User, UserRole, Vendor, VendorStatus
 
 STAFF_ROLES = frozenset({UserRole.OPERATIONS, UserRole.ADMIN})
 
-# Vendors may only hand their application over for review. Every decision
-# (approve, reject, send back, manual review) is made by staff or the system.
-VENDOR_ALLOWED_TARGETS = frozenset({VendorStatus.DOCUMENTS_SUBMITTED})
+# Vendors never change status directly: uploading all required documents moves the
+# application to DOCUMENTS_SUBMITTED automatically, and every decision after that is
+# made by staff or the system.
+VENDOR_ALLOWED_TARGETS: frozenset[VendorStatus] = frozenset()
 
 
 def is_staff(user: User) -> bool:
@@ -35,7 +36,8 @@ def assert_can_set_status(user: User, target: VendorStatus) -> None:
         return
     if target not in VENDOR_ALLOWED_TARGETS:
         raise ForbiddenError(
-            f"Your role cannot move an application to {target.value}",
+            f"Your role cannot move an application to {target.value}. "
+            "Upload the required documents instead; the status updates automatically.",
             details={"role": user.role.value, "allowed_targets": sorted(s.value for s in VENDOR_ALLOWED_TARGETS)},
         )
 

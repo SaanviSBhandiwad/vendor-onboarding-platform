@@ -19,7 +19,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title=settings.app_name,
-        version="0.2.0",
+        version="0.3.0",
         swagger_ui_parameters={"persistAuthorization": True},
     )
 

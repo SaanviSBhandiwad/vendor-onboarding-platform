@@ -65,6 +65,34 @@ class InvalidTransitionError(ConflictError):
     code = "invalid_state_transition"
 
 
+class DuplicateDocumentError(ConflictError):
+    code = "duplicate_document"
+
+
+class DocumentsLockedError(ConflictError):
+    code = "documents_locked"
+
+
+class EmptyFileError(AppError):
+    status_code = 400
+    code = "empty_file"
+
+
+class FileTooLargeError(AppError):
+    status_code = 413
+    code = "file_too_large"
+
+
+class UnsupportedFileTypeError(AppError):
+    status_code = 415
+    code = "unsupported_file_type"
+
+
+class ServiceUnavailableError(AppError):
+    status_code = 503
+    code = "service_unavailable"
+
+
 def _envelope(
     status: int, code: str, message: str, details: Any = None, headers: dict[str, str] | None = None
 ) -> JSONResponse:

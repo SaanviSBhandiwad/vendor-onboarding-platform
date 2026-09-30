@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
 
+    # Documents
+    upload_dir: str = "uploads"
+    max_upload_mb: int = 10
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
+
     @model_validator(mode="after")
     def _require_real_secret_outside_dev(self) -> "Settings":
         if self.environment not in {"local", "test"} and self.secret_key == DEV_SECRET_KEY:

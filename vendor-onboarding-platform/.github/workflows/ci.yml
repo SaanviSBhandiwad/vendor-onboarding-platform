@@ -29,6 +29,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: Install Tesseract (OCR tests)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
       - run: pip install -r requirements-dev.txt
       - name: Lint
         run: ruff check .

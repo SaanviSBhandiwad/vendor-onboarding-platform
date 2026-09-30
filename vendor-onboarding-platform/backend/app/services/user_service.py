@@ -91,15 +91,19 @@ def update_user(db: Session, user_id: uuid.UUID, data: UserUpdate, *, current: U
     ):
         raise SelfLockoutError("You cannot deactivate or demote your own account")
 
+    new_password = changes.pop("password", None)
     before = {k: getattr(user, k) for k in changes}
     for key, value in changes.items():
         setattr(user, key, value)
+    details = {
+        "before": {k: getattr(v, "value", v) for k, v in before.items()},
+        "after": {k: getattr(v, "value", v) for k, v in changes.items()},
+    }
+    if new_password is not None:
+        user.hashed_password = hash_password(new_password)
+        details["password_reset"] = True  # record *that* it changed, never the value
     audit_service.record(
-        db, entity_type=ENTITY, entity_id=user.id, action="user_updated", actor=actor,
-        details={
-            "before": {k: getattr(v, "value", v) for k, v in before.items()},
-            "after": {k: getattr(v, "value", v) for k, v in changes.items()},
-        },
+        db, entity_type=ENTITY, entity_id=user.id, action="user_updated", actor=actor, details=details,
     )
     db.commit()
     db.refresh(user)

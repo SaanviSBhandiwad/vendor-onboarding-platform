@@ -1,3 +1,10 @@
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg://vendor:vendor@db:5432/vendor_onboarding
+  REDIS_URL: redis://redis:6379/0
+  UPLOAD_DIR: /data/uploads
+  # Uses the dev default unless SECRET_KEY is set in your shell or a root .env file.
+  SECRET_KEY: ${SECRET_KEY:-dev-only-insecure-secret-key-change-me-in-production}
+
 services:
   db:
     image: pgvector/pgvector:pg16   # pgvector preinstalled for the RAG phase
@@ -13,7 +20,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine           # used by Celery from Days 5-6
+    image: redis:7-alpine           # Celery message broker
     command: redis-server --loglevel warning
     ports: ["6379:6379"]
     healthcheck:
@@ -23,15 +30,27 @@ services:
 
   api:
     build: ./backend
-    environment:
-      DATABASE_URL: postgresql+psycopg://vendor:vendor@db:5432/vendor_onboarding
-      REDIS_URL: redis://redis:6379/0
-      # Uses the dev default unless SECRET_KEY is set in your shell or a root .env file.
-      SECRET_KEY: ${SECRET_KEY:-dev-only-insecure-secret-key-change-me-in-production}
+    command: ["api"]                # runs migrations, then the web server
+    environment: *app-env
     ports: ["8000:8000"]
+    volumes: [uploads:/data/uploads]
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      retries: 20
+
+  worker:
+    build: ./backend
+    command: ["worker"]             # Celery worker processing background jobs
+    environment: *app-env
+    volumes: [uploads:/data/uploads]   # same files the API stored
+    depends_on:
+      api: { condition: service_healthy }   # wait until migrations have run
+    restart: unless-stopped
 
 volumes:
   pgdata:
+  uploads:

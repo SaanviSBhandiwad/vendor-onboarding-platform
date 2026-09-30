@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, users, vendors
+from app.api.v1 import auth, documents, jobs, users, vendors
 from app.schemas.common import error_responses
 
 # 401/403/422 can come from any endpoint; declaring them here documents the real
@@ -9,3 +9,5 @@ api_router = APIRouter(prefix="/api/v1", responses=error_responses(401, 403, 422
 api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(vendors.router)
+api_router.include_router(documents.router)
+api_router.include_router(jobs.router)
